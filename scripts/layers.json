@@ -1,0 +1,415 @@
+{
+  "version": 1,
+  "_comment": "Single source of truth for fetcher (selector + match), renderer (kind + style + render_order), and discovery (selector marks 'known'). Each layer is one fetch unit and one toggle in the UI.",
+
+  "categories": {
+    "roads":      { "label": "Roads",       "order": 1 },
+    "water":      { "label": "Water",       "order": 2 },
+    "nature":     { "label": "Nature",      "order": 3 },
+    "leisure":    { "label": "Leisure",     "order": 4 },
+    "structures": { "label": "Structures",  "order": 5 },
+    "amenity":    { "label": "Amenities",   "order": 6 },
+    "landuse":    { "label": "Land use",    "order": 7 }
+  },
+
+  "render_order": [
+    "coastline",
+    "landuse_forest",
+    "landuse_grass",
+    "landuse_retail",
+    "landuse_commercial",
+    "landuse_industrial",
+    "natural_scrub",
+    "water_body",
+    "natural_beach",
+    "leisure_park",
+    "leisure_garden",
+    "leisure_stadium",
+    "leisure_track",
+    "leisure_sports_centre",
+    "amenity_parking",
+    "waterway_river",
+    "waterway_canal",
+    "waterway_stream",
+    "man_made_pier",
+    "building",
+    "building_roof",
+    "amenity_theatre",
+    "road_footway",
+    "road_track",
+    "road_pedestrian",
+    "road_living_street",
+    "road_unclassified",
+    "road_residential",
+    "road_tertiary",
+    "road_secondary",
+    "road_primary_link",
+    "road_primary",
+    "road_trunk",
+    "road_motorway",
+    "leisure_pitch"
+  ],
+
+  "layers": [
+    {
+      "id": "road_motorway",
+      "category": "roads",
+      "kind": "line",
+      "selector": "way[\"highway\"=\"motorway\"]",
+      "match": [{ "key": "highway", "value": "motorway" }],
+      "default_visible": true,
+      "heavy": false,
+      "style": { "stroke": "#e74c3c", "width": 4 }
+    },
+    {
+      "id": "road_trunk",
+      "category": "roads",
+      "kind": "line",
+      "selector": "way[\"highway\"=\"trunk\"]",
+      "match": [{ "key": "highway", "value": "trunk" }],
+      "default_visible": true,
+      "heavy": false,
+      "style": { "stroke": "#e67e22", "width": 3.5 }
+    },
+    {
+      "id": "road_primary",
+      "category": "roads",
+      "kind": "line",
+      "selector": "way[\"highway\"=\"primary\"]",
+      "match": [{ "key": "highway", "value": "primary" }],
+      "default_visible": true,
+      "heavy": false,
+      "style": { "stroke": "#f1c40f", "width": 3 }
+    },
+    {
+      "id": "road_primary_link",
+      "category": "roads",
+      "kind": "line",
+      "selector": "way[\"highway\"=\"primary_link\"]",
+      "match": [{ "key": "highway", "value": "primary_link" }],
+      "default_visible": true,
+      "heavy": false,
+      "style": { "stroke": "#f1c40f", "width": 2 }
+    },
+    {
+      "id": "road_secondary",
+      "category": "roads",
+      "kind": "line",
+      "selector": "way[\"highway\"=\"secondary\"]",
+      "match": [{ "key": "highway", "value": "secondary" }],
+      "default_visible": true,
+      "heavy": false,
+      "style": { "stroke": "#dbaa40", "width": 2.5 }
+    },
+    {
+      "id": "road_tertiary",
+      "category": "roads",
+      "kind": "line",
+      "selector": "way[\"highway\"=\"tertiary\"]",
+      "match": [{ "key": "highway", "value": "tertiary" }],
+      "default_visible": true,
+      "heavy": false,
+      "style": { "stroke": "#ecf0f1", "width": 1.5 }
+    },
+    {
+      "id": "road_residential",
+      "category": "roads",
+      "kind": "line",
+      "selector": "way[\"highway\"=\"residential\"]",
+      "match": [{ "key": "highway", "value": "residential" }],
+      "default_visible": true,
+      "heavy": true,
+      "style": { "stroke": "#ecf0f1", "width": 1.5 }
+    },
+    {
+      "id": "road_unclassified",
+      "category": "roads",
+      "kind": "line",
+      "selector": "way[\"highway\"=\"unclassified\"]",
+      "match": [{ "key": "highway", "value": "unclassified" }],
+      "default_visible": true,
+      "heavy": false,
+      "style": { "stroke": "#ecf0f1", "width": 1.5 }
+    },
+    {
+      "id": "road_living_street",
+      "category": "roads",
+      "kind": "line",
+      "selector": "way[\"highway\"=\"living_street\"]",
+      "match": [{ "key": "highway", "value": "living_street" }],
+      "default_visible": true,
+      "heavy": false,
+      "style": { "stroke": "#ecf0f1", "width": 1.5 }
+    },
+    {
+      "id": "road_pedestrian",
+      "category": "roads",
+      "kind": "line",
+      "selector": "way[\"highway\"=\"pedestrian\"]",
+      "match": [{ "key": "highway", "value": "pedestrian" }],
+      "default_visible": true,
+      "heavy": false,
+      "style": { "stroke": "#b0b8bf", "width": 1.5 }
+    },
+    {
+      "id": "road_track",
+      "category": "roads",
+      "kind": "line",
+      "selector": "way[\"highway\"=\"track\"]",
+      "match": [{ "key": "highway", "value": "track" }],
+      "default_visible": true,
+      "heavy": false,
+      "style": { "stroke": "#88e0be", "width": 1.2 }
+    },
+    {
+      "id": "road_footway",
+      "category": "roads",
+      "kind": "line",
+      "selector": "way[\"highway\"=\"footway\"][\"crossing\"!=\"traffic_signals\"][\"footway\"!=\"sidewalk\"]",
+      "match": [
+        { "key": "highway", "value": "footway" },
+        { "key": "crossing", "value_not": "traffic_signals" },
+        { "key": "footway", "value_not": "sidewalk" }
+      ],
+      "default_visible": false,
+      "heavy": true,
+      "style": { "stroke": "#a0a8b0", "width": 0.8, "dash": [2, 2], "opacity": 0.6 }
+    },
+
+    {
+      "id": "coastline",
+      "category": "water",
+      "kind": "coastline",
+      "selector": "way[\"natural\"=\"coastline\"]",
+      "match": [{ "key": "natural", "value": "coastline" }],
+      "default_visible": true,
+      "heavy": false,
+      "style": { "fill": "#264653", "background": "#1a1a2e" }
+    },
+    {
+      "id": "water_body",
+      "category": "water",
+      "kind": "polygon",
+      "selector": "nwr[\"natural\"=\"water\"]",
+      "match": [{ "key": "natural", "value": "water" }],
+      "default_visible": true,
+      "heavy": false,
+      "style": { "fill": "#2a6496" }
+    },
+    {
+      "id": "waterway_river",
+      "category": "water",
+      "kind": "line",
+      "selector": "way[\"waterway\"=\"river\"]",
+      "match": [{ "key": "waterway", "value": "river" }],
+      "default_visible": true,
+      "heavy": false,
+      "style": { "stroke": "#2a6496", "width": 3 }
+    },
+    {
+      "id": "waterway_stream",
+      "category": "water",
+      "kind": "line",
+      "selector": "way[\"waterway\"=\"stream\"]",
+      "match": [{ "key": "waterway", "value": "stream" }],
+      "default_visible": true,
+      "heavy": false,
+      "style": { "stroke": "#2a6496", "width": 1.5 }
+    },
+    {
+      "id": "waterway_canal",
+      "category": "water",
+      "kind": "line",
+      "selector": "way[\"waterway\"=\"canal\"]",
+      "match": [{ "key": "waterway", "value": "canal" }],
+      "default_visible": true,
+      "heavy": false,
+      "style": { "stroke": "#2a6496", "width": 2 }
+    },
+    {
+      "id": "natural_beach",
+      "category": "nature",
+      "kind": "polygon",
+      "selector": "nwr[\"natural\"=\"beach\"]",
+      "match": [{ "key": "natural", "value": "beach" }],
+      "default_visible": true,
+      "heavy": false,
+      "style": { "fill": "#c2b280" }
+    },
+    {
+      "id": "natural_scrub",
+      "category": "nature",
+      "kind": "polygon",
+      "selector": "nwr[\"natural\"=\"scrub\"]",
+      "match": [{ "key": "natural", "value": "scrub" }],
+      "default_visible": true,
+      "heavy": false,
+      "style": { "fill": "#3d5a3a" }
+    },
+
+    {
+      "id": "man_made_pier",
+      "category": "structures",
+      "kind": "polygon",
+      "selector": "nwr[\"man_made\"=\"pier\"]",
+      "match": [{ "key": "man_made", "value": "pier" }],
+      "default_visible": true,
+      "heavy": false,
+      "style": { "fill": "#8d6e63", "stroke": "#8d6e63", "width": 2 }
+    },
+
+    {
+      "id": "leisure_park",
+      "category": "leisure",
+      "kind": "polygon",
+      "selector": "nwr[\"leisure\"=\"park\"]",
+      "match": [{ "key": "leisure", "value": "park" }],
+      "default_visible": true,
+      "heavy": false,
+      "style": { "fill": "#2d5a3f" }
+    },
+    {
+      "id": "leisure_garden",
+      "category": "leisure",
+      "kind": "polygon",
+      "selector": "nwr[\"leisure\"=\"garden\"]",
+      "match": [{ "key": "leisure", "value": "garden" }],
+      "default_visible": true,
+      "heavy": false,
+      "style": { "fill": "#2d5a3f" }
+    },
+    {
+      "id": "leisure_stadium",
+      "category": "leisure",
+      "kind": "polygon",
+      "selector": "nwr[\"leisure\"=\"stadium\"]",
+      "match": [{ "key": "leisure", "value": "stadium" }],
+      "default_visible": true,
+      "heavy": false,
+      "style": { "fill": "#4a6741" }
+    },
+    {
+      "id": "leisure_track",
+      "category": "leisure",
+      "kind": "polygon",
+      "selector": "nwr[\"leisure\"=\"track\"]",
+      "match": [{ "key": "leisure", "value": "track" }],
+      "default_visible": true,
+      "heavy": false,
+      "style": { "fill": "#4a6741" }
+    },
+    {
+      "id": "leisure_sports_centre",
+      "category": "leisure",
+      "kind": "polygon",
+      "selector": "nwr[\"leisure\"=\"sports_centre\"]",
+      "match": [{ "key": "leisure", "value": "sports_centre" }],
+      "default_visible": true,
+      "heavy": false,
+      "style": { "fill": "#4a6741" }
+    },
+    {
+      "id": "leisure_pitch",
+      "category": "leisure",
+      "kind": "polygon",
+      "selector": "nwr[\"leisure\"=\"pitch\"]",
+      "match": [{ "key": "leisure", "value": "pitch" }],
+      "default_visible": true,
+      "heavy": false,
+      "style": { "fill": "#5a8055" }
+    },
+
+    {
+      "id": "landuse_forest",
+      "category": "landuse",
+      "kind": "polygon",
+      "selector": "nwr[\"landuse\"=\"forest\"]",
+      "match": [{ "key": "landuse", "value": "forest" }],
+      "default_visible": true,
+      "heavy": false,
+      "style": { "fill": "#1f4030" }
+    },
+    {
+      "id": "landuse_grass",
+      "category": "landuse",
+      "kind": "polygon",
+      "selector": "nwr[\"landuse\"=\"grass\"]",
+      "match": [{ "key": "landuse", "value": "grass" }],
+      "default_visible": true,
+      "heavy": false,
+      "style": { "fill": "#2d5a3f" }
+    },
+    {
+      "id": "landuse_retail",
+      "category": "landuse",
+      "kind": "polygon",
+      "selector": "nwr[\"landuse\"=\"retail\"]",
+      "match": [{ "key": "landuse", "value": "retail" }],
+      "default_visible": false,
+      "heavy": false,
+      "style": { "fill": "#3d3147" }
+    },
+    {
+      "id": "landuse_commercial",
+      "category": "landuse",
+      "kind": "polygon",
+      "selector": "nwr[\"landuse\"=\"commercial\"]",
+      "match": [{ "key": "landuse", "value": "commercial" }],
+      "default_visible": false,
+      "heavy": false,
+      "style": { "fill": "#3d3147" }
+    },
+    {
+      "id": "landuse_industrial",
+      "category": "landuse",
+      "kind": "polygon",
+      "selector": "nwr[\"landuse\"=\"industrial\"]",
+      "match": [{ "key": "landuse", "value": "industrial" }],
+      "default_visible": false,
+      "heavy": false,
+      "style": { "fill": "#2e3440" }
+    },
+
+    {
+      "id": "amenity_parking",
+      "category": "amenity",
+      "kind": "polygon",
+      "selector": "nwr[\"amenity\"=\"parking\"]",
+      "match": [{ "key": "amenity", "value": "parking" }],
+      "default_visible": true,
+      "heavy": false,
+      "style": { "fill": "#3a3a4a" }
+    },
+    {
+      "id": "amenity_theatre",
+      "category": "amenity",
+      "kind": "polygon",
+      "selector": "nwr[\"amenity\"=\"theatre\"]",
+      "match": [{ "key": "amenity", "value": "theatre" }],
+      "default_visible": true,
+      "heavy": false,
+      "style": { "fill": "#2e3545" }
+    },
+
+    {
+      "id": "building",
+      "category": "structures",
+      "kind": "polygon",
+      "selector": "way[\"building\"]",
+      "match": [{ "key": "building", "present": true, "value_not": "roof" }],
+      "default_visible": true,
+      "heavy": true,
+      "style": { "fill": "#2e3545" }
+    },
+    {
+      "id": "building_roof",
+      "category": "structures",
+      "kind": "polygon",
+      "selector": "nwr[\"building\"=\"roof\"]",
+      "match": [{ "key": "building", "value": "roof" }],
+      "default_visible": true,
+      "heavy": false,
+      "style": { "fill": "#2e3545", "opacity": 0.4 }
+    }
+  ]
+}

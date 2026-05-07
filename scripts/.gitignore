@@ -1,0 +1,10 @@
+__pycache__/
+node_modules/
+roads.*
+nodes.json
+cache.json
+*.db
+*.png
+*.svg
+*_cache.json
+place_data.json

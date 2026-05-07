@@ -1,0 +1,12 @@
+/* Global resets — most styling lives in component <style> blocks. */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overscroll-behavior: none;
+  color-scheme: dark;
+}
+* {
+  box-sizing: border-box;
+}
