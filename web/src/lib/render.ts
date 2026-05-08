@@ -344,14 +344,26 @@ function isClosed(geom: OsmPoint[]): boolean {
 // lat) map straight to canvas pixels. We undo that scale for line widths
 // and dashes so they remain pixel-accurate at any zoom.
 
+/** Subset of LayerStyle that the user can override per-layer at runtime.
+ *  Mirrors LayerStyleOverride in state.svelte.ts (kept here too so the
+ *  renderer doesn't have to depend on state). */
+export interface StyleOverride {
+  stroke?: string;
+  fill?: string;
+  background?: string;
+  width?: number;
+}
+
 function drawCompiledLayer(
   ctx: CanvasRenderingContext2D,
   layer: Layer,
   compiled: CompiledLayer,
   scale: number,
   cornersInProj: [number, number][],
+  override: StyleOverride = {},
 ) {
-  const style = layer.style ?? {};
+  // Override > registry default. Spread order matters.
+  const style = { ...(layer.style ?? {}), ...override };
   ctx.globalAlpha = style.opacity ?? 1;
 
   if (compiled.kind === 'coastline') {
@@ -422,6 +434,10 @@ export interface RenderOptions {
    *  centroid, which is what cosLat is derived from) changes — paths
    *  built against an old cosLat won't transform correctly. */
   compiled: Map<string, CompiledLayer>;
+  /** Per-layer style overrides (colors only, for now). Empty by default.
+   *  Geometry isn't affected, so changing overrides never triggers a
+   *  Path2D rebuild — just a redraw. */
+  overrides?: Record<string, StyleOverride>;
   /** User view; null/undefined uses defaultView(bbox). */
   view?: View | null;
   fitMode?: FitMode; // default 'cover'
@@ -443,7 +459,10 @@ export function renderToCanvas(
   canvas: HTMLCanvasElement,
   opts: RenderOptions,
 ): RenderResult | null {
-  const { data, registry, enabledLayers, compiled, fitMode = 'cover' } = opts;
+  const {
+    data, registry, enabledLayers, compiled,
+    overrides = {}, fitMode = 'cover',
+  } = opts;
   const layerById: Record<string, Layer> = Object.fromEntries(
     registry.layers.map((l) => [l.id, l]),
   );
@@ -461,10 +480,15 @@ export function renderToCanvas(
   if (!ctx2d) return null;
 
   // Phase 1 — paint ocean and set up the canvas-pixel clip in identity
-  // (DPR-only) space.
+  // (DPR-only) space. Ocean color comes from the coastline layer's
+  // `background`, with the override taking precedence.
   ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
   const coastline = layerById['coastline'];
-  const oceanColor = coastline?.style?.background ?? DEFAULT_OCEAN;
+  const coastlineOverride = overrides['coastline'] ?? {};
+  const oceanColor =
+    coastlineOverride.background ??
+    coastline?.style?.background ??
+    DEFAULT_OCEAN;
   ctx2d.fillStyle = oceanColor;
   ctx2d.fillRect(0, 0, cssW, cssH);
 
@@ -520,7 +544,7 @@ export function renderToCanvas(
     if (!layer) continue;
     const c = compiled.get(layerId);
     if (!c) continue; // not yet compiled (caller should compile lazily)
-    drawCompiledLayer(ctx2d, layer, c, scale, cornersInProj);
+    drawCompiledLayer(ctx2d, layer, c, scale, cornersInProj, overrides[layerId]);
   }
 
   ctx2d.restore();

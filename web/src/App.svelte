@@ -4,8 +4,10 @@
   import LayerSidebar from './components/LayerSidebar.svelte';
   import MapCanvas from './components/MapCanvas.svelte';
   import RadiusSlider from './components/RadiusSlider.svelte';
+  import ShareButton from './components/ShareButton.svelte';
   import { getLayers, ApiError } from './lib/api';
   import { app, applyDefaultVisibility } from './lib/state.svelte';
+  import { loadShareWithFeedback } from './lib/share';
 
   onMount(async () => {
     app.loading = 'layers';
@@ -19,6 +21,14 @@
     } finally {
       app.loading = 'idle';
     }
+
+    // After the registry is loaded, check for a shared design in the
+    // URL and hydrate from it.
+    const params = new URLSearchParams(window.location.search);
+    const shareId = params.get('share');
+    if (shareId) {
+      await loadShareWithFeedback(shareId);
+    }
   });
 </script>
 
@@ -27,6 +37,7 @@
     <div class="brand">CityMapFrames</div>
     <div class="search-slot"><SearchBar /></div>
     <RadiusSlider />
+    <ShareButton />
   </header>
 
   <main class="body">

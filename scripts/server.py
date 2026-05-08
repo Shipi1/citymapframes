@@ -27,13 +27,15 @@ from contextlib import asynccontextmanager
 from dataclasses import asdict
 from typing import Optional
 
-from fastapi import Body, FastAPI, HTTPException, Response
+import orjson
+from fastapi import Body, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 import db
 import fetch as fetch_mod
+import presets_db
 from fetch import (
     DEFAULT_RADIUS_KM,
     MAX_RADIUS_KM,
@@ -167,6 +169,7 @@ class DataRequest(BaseModel):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init_db()
+    presets_db.init_db()
     yield
 
 
@@ -480,6 +483,215 @@ async def post_data(
 )
 async def health():
     return {"ok": True, **db.stats()}
+
+
+# ---------- /api/share — sharable designs ----------
+
+# Caps. Tighten with slowapi rate-limiting before deploying publicly.
+MAX_DESIGN_BYTES = 8 * 1024  # ~8 KB
+MAX_NAME_LEN = 80
+MAX_ID_LEN = 16  # generous over the actual 8-char generator
+
+
+class SharedAnchor(BaseModel):
+    osm_type: str
+    osm_id: int
+    lat: float
+    lon: float
+
+
+class StyleOverridePayload(BaseModel):
+    """Permissive — extra unknown keys are ignored on the server.
+    The frontend's LayerStyleOverride is the canonical type."""
+    model_config = ConfigDict(extra="ignore")
+    stroke: Optional[str] = None
+    fill: Optional[str] = None
+    background: Optional[str] = None
+    width: Optional[float] = None
+
+
+class ViewPayload(BaseModel):
+    centerLat: float
+    centerLon: float
+    zoom: float
+
+
+class SharedDesign(BaseModel):
+    """Mirrors web/src/lib/types.ts → SharedDesign. Schema-versioned for
+    forward compat — bump the integer when a structural change lands.
+
+    Two share kinds, distinguished by the presence of place fields:
+      * Full   — has `query` + `anchor` + `radiusKm`. Recipient sees the
+                 exact map (refetches geometry).
+      * Style  — only `enabledLayers` + `overrides`. Recipient applies
+                 them to their current map without refetching.
+    """
+    model_config = ConfigDict(extra="ignore")
+    schemaVersion: int = Field(1, ge=1)
+    name: str = Field(..., min_length=1, max_length=MAX_NAME_LEN)
+
+    # ---- design (always present) ----
+    enabledLayers: list[str] = Field(default_factory=list, max_length=200)
+    overrides: Optional[dict[str, StyleOverridePayload]] = None
+
+    # ---- place + viewport (present only in "full" shares) ----
+    query: Optional[str] = Field(None, min_length=1, max_length=200)
+    anchor: Optional[SharedAnchor] = None
+    radiusKm: Optional[int] = Field(None, ge=MIN_RADIUS_KM, le=MAX_RADIUS_KM)
+    view: Optional[ViewPayload] = None
+
+
+class ShareCreateRequest(BaseModel):
+    design: SharedDesign
+    parent_id: Optional[str] = Field(None, max_length=MAX_ID_LEN)
+
+
+class ShareCreateResponse(BaseModel):
+    id: str
+    name: str
+    parent_id: Optional[str] = None
+    created_at: int
+    deduped: bool = False
+
+
+class ShareGetResponse(BaseModel):
+    id: str
+    name: str
+    design: SharedDesign
+    parent_id: Optional[str] = None
+    view_count: int
+    created_at: int
+
+
+EXAMPLE_FULL_DESIGN = {
+    "schemaVersion": 1,
+    "name": "Lisbon, dim buildings",
+    "query": "Lisbon",
+    "anchor": {
+        "osm_type": "relation", "osm_id": 5400890,
+        "lat": 38.7077507, "lon": -9.1365919,
+    },
+    "radiusKm": 15,
+    "enabledLayers": ["coastline", "road_motorway", "road_primary", "building"],
+    "overrides": {
+        "building": {"fill": "#2a2f4a"},
+        "road_motorway": {"stroke": "#ff7676", "width": 3},
+    },
+}
+
+EXAMPLE_STYLE_ONLY_DESIGN = {
+    "schemaVersion": 1,
+    "name": "Sunset palette",
+    "enabledLayers": ["coastline", "road_motorway", "road_primary", "building"],
+    "overrides": {
+        "building": {"fill": "#3a2a4a"},
+        "road_motorway": {"stroke": "#ff7676", "width": 3},
+        "coastline": {"fill": "#1a1a2e", "background": "#0b0820"},
+    },
+}
+
+
+@app.post(
+    "/api/share",
+    summary="Create a shareable design",
+    response_model=ShareCreateResponse,
+    responses={
+        201: {"description": "New share created."},
+        200: {"description": "Existing share returned (deduped on content_hash)."},
+        400: {"description": "Invalid schema."},
+        413: {"description": "Design exceeds size limit."},
+    },
+)
+async def post_share(
+    request: Request,
+    req: ShareCreateRequest = Body(
+        ...,
+        openapi_examples={
+            "full": {
+                "summary": "Full design — place + view + style",
+                "description": (
+                    "Recipient sees the exact map you sent. Includes "
+                    "anchor + radius + view, so the recipient's frontend "
+                    "fetches geometry for that specific place."
+                ),
+                "value": {"design": EXAMPLE_FULL_DESIGN},
+            },
+            "style_only": {
+                "summary": "Style only — layer selection + colors",
+                "description": (
+                    "Recipient applies the design to whatever map they "
+                    "have loaded. No place data is sent, no refetch on "
+                    "their side. The common case."
+                ),
+                "value": {"design": EXAMPLE_STYLE_ONLY_DESIGN},
+            },
+            "remix": {
+                "summary": "Remix of an existing share",
+                "value": {
+                    "design": EXAMPLE_FULL_DESIGN,
+                    "parent_id": "k3Bz9aLw",
+                },
+            },
+        },
+    ),
+):
+    """Persist a SharedDesign. Anonymous and immutable: posters get a
+    short id back; deletion / editing are not exposed in v1.
+
+    Identical content (same `sha256(design)`) returns the existing id
+    with HTTP 200 instead of inserting a duplicate.
+    """
+    name = req.design.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+
+    design_dict = req.design.model_dump(exclude_none=True)
+    serialized = orjson.dumps(design_dict)
+    if len(serialized) > MAX_DESIGN_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"design exceeds {MAX_DESIGN_BYTES} bytes "
+                f"({len(serialized)} given)"
+            ),
+        )
+
+    client_ip = request.client.host if request.client else None
+
+    result = await _run_blocking(
+        presets_db.create_preset,
+        name=name,
+        design=design_dict,
+        parent_id=req.parent_id,
+        creator_ip=client_ip,
+    )
+
+    response = ShareCreateResponse(
+        id=result["id"],
+        name=result["name"],
+        parent_id=result["parent_id"],
+        created_at=result["created_at"],
+        deduped=result["deduped"],
+    )
+    # 200 on dedup (we returned an existing share), 201 on fresh insert.
+    status = 200 if result["deduped"] else 201
+    return ORJSONResponse(content=response.model_dump(), status_code=status)
+
+
+@app.get(
+    "/api/share/{preset_id}",
+    summary="Load a shared design",
+    response_model=ShareGetResponse,
+    response_model_exclude_none=True,
+    responses={404: {"description": "Preset not found."}},
+)
+async def get_share(preset_id: str):
+    if not preset_id or not preset_id.isalnum() or len(preset_id) > MAX_ID_LEN:
+        raise HTTPException(status_code=400, detail="invalid preset id")
+    result = await _run_blocking(presets_db.get_preset, preset_id, True)
+    if result is None:
+        raise HTTPException(status_code=404, detail="preset not found")
+    return result
 
 
 # ---------- CLI ----------

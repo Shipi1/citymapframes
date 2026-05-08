@@ -82,6 +82,7 @@
       registry: app.registry,
       enabledLayers: app.enabledLayers,
       compiled,
+      overrides: app.layerOverrides,
       view: app.view,
     });
   }
@@ -100,6 +101,7 @@
     app.registry;
     app.enabledLayers;
     app.view;
+    app.layerOverrides;
     scheduleRedraw();
   });
 

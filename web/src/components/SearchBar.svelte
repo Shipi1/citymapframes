@@ -12,6 +12,8 @@
     // New place → fresh framing. The previous view (if any) was for a
     // different bbox, keeping it would put the user looking at nothing.
     app.view = null;
+    // The user is starting from scratch — this isn't a remix anymore.
+    app.parentShareId = null;
 
     try {
       app.loading = 'place';

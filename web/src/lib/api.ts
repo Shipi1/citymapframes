@@ -2,7 +2,14 @@
 // Calls go through Vite's dev proxy in development; in production the
 // reverse proxy handles the same path prefix (see TODO.md).
 
-import type { Anchor, LayerRegistry, PlaceData } from './types';
+import type {
+  Anchor,
+  LayerRegistry,
+  PlaceData,
+  SharedDesign,
+  ShareCreateResponse,
+  ShareGetResponse,
+} from './types';
 
 // API base path. Empty string means same-origin; in dev that's the
 // Vite dev server, which proxies /api/* to the FastAPI process.
@@ -58,6 +65,20 @@ export function postData(
     method: 'POST',
     body: JSON.stringify({ anchor, layers, radius_km: radiusKm, force }),
   });
+}
+
+export function createShare(
+  design: SharedDesign,
+  parent_id?: string,
+): Promise<ShareCreateResponse> {
+  return request<ShareCreateResponse>('/api/share', {
+    method: 'POST',
+    body: JSON.stringify({ design, parent_id }),
+  });
+}
+
+export function getShare(id: string): Promise<ShareGetResponse> {
+  return request<ShareGetResponse>(`/api/share/${encodeURIComponent(id)}`);
 }
 
 export { ApiError };
