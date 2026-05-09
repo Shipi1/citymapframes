@@ -9,6 +9,7 @@ import type {
   SharedDesign,
   ShareCreateResponse,
   ShareGetResponse,
+  ShareListResponse,
 } from './types';
 
 // API base path. Empty string means same-origin; in dev that's the
@@ -79,6 +80,12 @@ export function createShare(
 
 export function getShare(id: string): Promise<ShareGetResponse> {
   return request<ShareGetResponse>(`/api/share/${encodeURIComponent(id)}`);
+}
+
+export function listShares(recent = 20, offset = 0): Promise<ShareListResponse> {
+  return request<ShareListResponse>(
+    `/api/share?recent=${recent}&offset=${offset}`,
+  );
 }
 
 export { ApiError };

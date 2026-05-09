@@ -109,6 +109,46 @@ export async function loadShareWithFeedback(id: string): Promise<boolean> {
   }
 }
 
+/** Apply ONLY the design layer (enabledLayers + overrides) of a share to
+ *  the user's current map — even if the share is "full" (has place /
+ *  view / radius). Used by the gallery thumbnail click: the user wants
+ *  someone else's *style*, not their place.
+ *
+ *  No place change. No view change. Refetches only the diff of newly-
+ *  enabled layers against the user's current data. */
+export async function applyShareStyleWithFeedback(
+  id: string,
+): Promise<boolean> {
+  app.loading = 'data';
+  app.error = null;
+  try {
+    const result = await getShare(id);
+    const d = result.design;
+    app.parentShareId = id;
+    app.enabledLayers = new Set(d.enabledLayers);
+    app.layerOverrides = d.overrides ?? {};
+
+    if (app.anchor && app.data) {
+      const have = new Set(Object.keys(app.data.layers));
+      const missing = [...app.enabledLayers].filter((id) => !have.has(id));
+      if (missing.length > 0) {
+        const fresh = await postData(app.anchor, missing, app.radiusKm);
+        app.data = {
+          anchor: fresh.anchor,
+          layers: { ...app.data.layers, ...fresh.layers },
+        };
+      }
+    }
+    return true;
+  } catch (err) {
+    const msg = err instanceof ApiError ? err.message : String(err);
+    app.error = `Failed to apply shared style: ${msg}`;
+    return false;
+  } finally {
+    app.loading = 'idle';
+  }
+}
+
 /** Pull a share id out of various input forms a user might paste:
  *   - "abc12345"                                 (bare id)
  *   - "https://shipisnature.com/?share=abc12345" (full URL)

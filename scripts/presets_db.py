@@ -243,6 +243,35 @@ def get_preset(
     }
 
 
+def list_recent(limit: int = 20, offset: int = 0) -> list[dict]:
+    """Return the N most recently created presets, newest first.
+    Decompresses each `design` blob; the per-row size is small (~1-2 KB
+    JSON) so this is cheap up to a few hundred items.
+
+    Used by the gallery — every share is publicly listed in v1.
+    """
+    _ensure_init()
+    limit = max(1, min(int(limit), 100))
+    offset = max(0, int(offset))
+    with _txn() as conn:
+        rows = conn.execute(
+            """SELECT id, name, design, parent_id, view_count, created_at
+               FROM preset ORDER BY created_at DESC LIMIT ? OFFSET ?""",
+            (limit, offset),
+        ).fetchall()
+    return [
+        {
+            "id": r[0],
+            "name": r[1],
+            "design": orjson.loads(gzip.decompress(r[2])),
+            "parent_id": r[3],
+            "view_count": r[4],
+            "created_at": r[5],
+        }
+        for r in rows
+    ]
+
+
 # ---------- housekeeping ----------
 
 def stats() -> dict:

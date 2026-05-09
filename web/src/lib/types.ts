@@ -146,3 +146,7 @@ export interface ShareGetResponse {
   view_count: number;
   created_at: number;
 }
+
+export interface ShareListResponse {
+  items: ShareGetResponse[];
+}

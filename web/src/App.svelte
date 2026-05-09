@@ -5,9 +5,13 @@
   import MapCanvas from './components/MapCanvas.svelte';
   import RadiusSlider from './components/RadiusSlider.svelte';
   import ShareButton from './components/ShareButton.svelte';
+  import Gallery from './components/Gallery.svelte';
   import { getLayers, ApiError } from './lib/api';
   import { app, applyDefaultVisibility } from './lib/state.svelte';
   import { loadShareWithFeedback } from './lib/share';
+  import { getReferenceBundle } from './lib/gallery';
+
+  let galleryOpen = $state(false);
 
   onMount(async () => {
     app.loading = 'layers';
@@ -20,6 +24,18 @@
       app.error = `Failed to load layer registry: ${msg}`;
     } finally {
       app.loading = 'idle';
+    }
+
+    // Prefetch the gallery's reference geometry in the background. By
+    // the time the user clicks Browse, the bundle is cached and the
+    // modal opens instantly. Concurrent calls (e.g. user clicks Browse
+    // mid-prefetch) attach to the same promise via getReferenceBundle's
+    // internal de-dup; no double fetch.
+    if (app.registry) {
+      getReferenceBundle(app.registry).catch((err) => {
+        // Non-fatal: gallery will retry on demand if user opens it.
+        console.warn('gallery prefetch failed:', err);
+      });
     }
 
     // After the registry is loaded, check for a shared design in the
@@ -37,6 +53,11 @@
     <div class="brand">CityMapFrames</div>
     <div class="search-slot"><SearchBar /></div>
     <RadiusSlider />
+    <button
+      class="browse-btn"
+      onclick={() => (galleryOpen = true)}
+      title="Browse shared designs"
+    >Browse</button>
     <ShareButton />
   </header>
 
@@ -45,6 +66,10 @@
     <MapCanvas />
   </main>
 </div>
+
+{#if galleryOpen}
+  <Gallery onClose={() => (galleryOpen = false)} />
+{/if}
 
 <style>
   :global(:root) {
@@ -88,6 +113,20 @@
   .search-slot {
     flex: 1 1 auto;
     min-width: 0;
+  }
+  .browse-btn {
+    flex: 0 0 auto;
+    padding: 0.55rem 0.95rem;
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+  .browse-btn:hover {
+    border-color: var(--accent);
   }
   .body {
     display: flex;

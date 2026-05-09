@@ -5,11 +5,19 @@ Open tracks:
 1. [Sharable designs](#sharable-designs-server-side-presets) — let users
    POST a current design to a new `presets.db` and share it via a
    short-id URL. **In progress.**
-2. [Export SVG/PNG](#export-svgpng-from-the-frontend) — let the user
+2. [Gallery warm-up hook](#gallery-warm-up-on-server-boot) — pre-fetch
+   the gallery's reference geometry into `cache.db` on server startup
+   so the first browser to hit the gallery never pays the cold
+   Overpass round-trip.
+3. [Parallel rendering / compilation](#parallel-rendering--compilation-cpu--gpu) —
+   explore Web Workers + OffscreenCanvas (and/or WebGPU long-term) to
+   keep the main thread free during heavy compile and to render
+   thumbnails in parallel.
+4. [Export SVG/PNG](#export-svgpng-from-the-frontend) — let the user
    download the current canvas as an image from a button overlay.
-3. [Customize layer styles](#customize-layer-styles-colors-widths) —
+5. [Customize layer styles](#customize-layer-styles-colors-widths) —
    continue past colors+widths: opacity, dash, "reset all" button.
-4. [Deploy](#deploy-serverpy-at-shipisnaturecomapimap) — wire up
+6. [Deploy](#deploy-serverpy-at-shipisnaturecomapimap) — wire up
    `server.py` at `shipisnature.com/api/map/` behind nginx.
 
 Done:
@@ -158,6 +166,237 @@ Caps:
 - Server-side rate limit enforcement (data is captured; enforcement is
   on the deploy track)
 - Accounts and OAuth
+
+---
+
+# Gallery warm-up on server boot
+
+Owner: `scripts/server.py` — extend the `lifespan` context manager.
+
+## Why
+
+The frontend already prefetches the gallery's reference geometry (Viña
+del Mar, 3 km) right after the layer registry loads. That hides the
+latency from any user *after* the cache is warm. The first user on a
+fresh server still pays the cold Overpass round-trip — ~10 s of
+"loading reference geometry…" if they click Browse early.
+
+Warming the cache during server boot moves that 10 s into a phase
+where there are no users to wait for it.
+
+## Plan
+
+In `server.py`'s `lifespan`, fire a background task immediately after
+the schema migrations:
+
+```python
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    db.init_db()
+    presets_db.init_db()
+    asyncio.create_task(_warm_gallery_cache())   # ← new
+    yield
+
+
+async def _warm_gallery_cache():
+    """Fetch the gallery reference (Viña del Mar, 3 km, all layers)
+    into cache.db so the first /api/data call from the gallery is a
+    cache hit. No-op on subsequent boots — fetch.fetch() short-circuits
+    when every layer is already cached within the 14-day TTL."""
+    try:
+        anchor = Anchor(
+            osm_type='relation', osm_id=110804,
+            name='Viña del Mar', display_name='Viña del Mar',
+            level='city', lat=-33.0245, lon=-71.5518,
+            bbox=(0, 0, 0, 0), extent_km=6, bbox_synthesized=True,
+        )
+        layer_ids = fetch_mod.all_layer_ids()
+        await asyncio.get_event_loop().run_in_executor(
+            None, fetch_mod.fetch, anchor, layer_ids, False, 3,
+        )
+    except Exception as e:
+        print(f'gallery warm-up failed: {e}', file=sys.stderr)
+```
+
+The server is **immediately responsive** to all other requests during
+the warm-up because the task runs on the asyncio loop's executor
+threadpool (same path the regular `/api/data` handler uses). Only the
+gallery's first request might coalesce with the in-flight warm-up via
+the existing `_fetch_inflight` machinery — which is the desired
+behavior, not a problem.
+
+## Constants
+
+The reference anchor is hard-coded in two places today:
+`web/src/lib/gallery.ts` and the warm-up task above. Worth extracting
+into a small `scripts/gallery_reference.py` (mirrored by
+`web/src/lib/gallery.ts`) so they can't drift. Low priority — they
+rarely change.
+
+## Acceptance criteria
+
+- [ ] Booting `server.py` with an empty `cache.db` produces a usable
+      server within ~50 ms (warm-up runs in the background).
+- [ ] After ~10 s, `cache.db` contains every layer for `relation/110804`
+      at `radius_km = 3`.
+- [ ] First `POST /api/data` for the gallery anchor returns in
+      < 500 ms (server cache hit).
+- [ ] Failure of the warm-up doesn't block normal API requests; logs
+      a warning, gallery falls back to on-demand fetch as today.
+
+## Out of scope
+
+- Re-warming on TTL expiry. The 14-day TTL is long enough that this
+  is a non-issue in practice; if it becomes one, add a periodic task.
+- Warming designs other than the gallery reference. There's no point
+  warming user-supplied places — they're already cached after first
+  visit.
+
+---
+
+# Parallel rendering / compilation (CPU / GPU)
+
+Owner: exploratory — likely
+`web/src/lib/render-worker.ts` (new),
+`web/src/components/MapCanvas.svelte`,
+`web/src/components/Thumbnail.svelte`.
+
+Status: **research / discuss before building**. Document trade-offs;
+pick a phase if/when the bottleneck warrants it.
+
+## Why
+
+Today, the renderer is fast on a modern desktop:
+
+- Compiling a city's `Path2D` set on data load: ~50–500 ms (single
+  burst, blocks main thread)
+- Per-frame redraw on pan/zoom: well under 16 ms (60 fps)
+- Mounting 30 thumbnails in the gallery: ~50–100 ms total
+
+The painful spikes are:
+
+1. **Compile-on-data-load** — when a city's data lands, the JS event
+   loop is frozen for 100–500 ms while Path2Ds are built. UI feels
+   janky during that window (search box won't refocus, slider can't
+   slide).
+2. **Mid-tier and mobile devices** are 3–10× slower than my numbers
+   above. What's "fine" on desktop is "noticeable" on a Pixel 6.
+
+We don't have a perf problem on desktop today. This track is about
+keeping headroom as the project scales (more layers, more elements,
+weaker devices).
+
+## Phases, ordered by ROI
+
+### Phase A — Web Worker for Path2D compilation
+
+Move `compileLayer` off the main thread.
+
+```
+main thread:                  worker thread:
+  receives /api/data            
+       ↓                        
+  postMessage(elements) ───────►receives
+                                compileLayer for each layer
+                                serializes Path2D's instructions
+       ◄──────────────────────  postMessage(instructions)
+  reconstructs Path2D objects
+  on main thread
+  swap into compiled cache
+```
+
+The wrinkle: `Path2D` is not transferable across workers — each thread
+has its own. So the worker can't just hand back finished `Path2D`s.
+What it CAN return:
+
+- A `Float32Array` of `(x, y)` pairs per layer (transferable)
+- An array of `(layerId, startIdx, length, isClosed)` ranges describing
+  per-element subpaths
+
+Main thread reconstructs Path2D from those typed arrays. The walk is
+fast (`moveTo` + `lineTo` are cheap); the expensive part — iterating
+elements, doing the cosLat math, accumulating coordinates — happens
+off-thread.
+
+**Win**: 100–500 ms compile becomes invisible. Search box stays
+responsive during data load.
+
+**Cost**: ~100 lines of worker boilerplate, message-pump plumbing in
+`MapCanvas.svelte`'s `ensureCompiled()`. No API contract changes.
+
+### Phase B — OffscreenCanvas for thumbnail rendering
+
+Each `Thumbnail` mounts a small canvas. Today, all 30 paint on the
+main thread sequentially. With OffscreenCanvas + a worker:
+
+- Reference data + compiled paths transferred once to the worker
+- Each thumbnail's `<canvas>` calls `transferControlToOffscreen()`
+- Worker paints thumbnails as messages stream in
+
+**Win**: gallery feels instant even on slow machines. Doesn't help
+the main canvas (which has its own complexity around pan/zoom event
+binding to the DOM canvas).
+
+**Cost**: rewrite of `Thumbnail.svelte`. OffscreenCanvas has wide
+support (Chrome 69+, Firefox 105+, Safari 16.4+) — fine for our
+target audience.
+
+### Phase C — WebGPU / WebGL renderer
+
+The big rewrite. Replace the 2D canvas pipeline with a GPU-backed
+mesh + shader stack.
+
+**Win**: on a city with millions of building polygons, this is the
+only path to 60 fps pan/zoom. Today's Path2D approach saturates
+around 100k elements on weaker GPUs.
+
+**Cost**: rewrite of `render.ts`, ~1–2 weeks. Maintenance overhead
+of two render code paths (the SVG/PNG export still needs a non-GPU
+path). Likely overkill until/unless you hit >100k visible elements
+*and* care about mobile.
+
+WebGPU support is now usable (Chrome 113+, Safari 26 / 18.4+, Firefox
+141+). WebGL is universally available but a bigger glue API.
+
+### Backend parallelism
+
+Server-side, the meaningful axes are:
+
+- **Multi-worker uvicorn** (`--workers N`): runs N processes in
+  parallel. Already mentioned on the deploy track. Tradeoff: process-
+  local in-flight coalescing breaks (each worker has its own
+  `_fetch_inflight` dict), so two simultaneous identical requests
+  routed to different workers each fire their own Overpass call.
+  Mitigation when needed: move coalescing to Redis.
+- **SQLite WAL mode** already allows concurrent reads; no change
+  needed.
+- **orjson** is fast enough that GIL pressure on the JSON encode step
+  isn't an issue.
+
+Backend parallelism is essentially a deploy concern, not a code one.
+
+## Decisions deferred
+
+- Whether the Web Worker compile path becomes the default or a
+  feature-flagged optional path.
+- Whether to ship a polyfill / fallback for OffscreenCanvas (probably
+  no — stick to recent browsers).
+- Whether to attempt WebGPU at all (probably no — not until perf data
+  forces it).
+
+## Acceptance criteria (Phase A only)
+
+- [ ] On data load, the JS main thread does not block for more than
+      ~16 ms (one frame).
+- [ ] Compile latency is the same or better wall-clock than today.
+- [ ] Visual output is identical.
+- [ ] No regression in pan/zoom frame time.
+
+## Out of scope
+
+- Server-side `render.js` parallelism. Node's `canvas` library is
+  thread-bound; if it ever becomes a bottleneck the answer is
+  "spawn more processes" not "parallelize one render."
 
 ---
 

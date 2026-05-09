@@ -563,6 +563,10 @@ class ShareGetResponse(BaseModel):
     created_at: int
 
 
+class ShareListResponse(BaseModel):
+    items: list[ShareGetResponse]
+
+
 EXAMPLE_FULL_DESIGN = {
     "schemaVersion": 1,
     "name": "Lisbon, dim buildings",
@@ -676,6 +680,22 @@ async def post_share(
     # 200 on dedup (we returned an existing share), 201 on fresh insert.
     status = 200 if result["deduped"] else 201
     return ORJSONResponse(content=response.model_dump(), status_code=status)
+
+
+@app.get(
+    "/api/share",
+    summary="List recent shared designs",
+    response_model=ShareListResponse,
+    response_model_exclude_none=True,
+)
+async def list_shares(recent: int = 20, offset: int = 0):
+    """Return the most recently posted designs, newest first.
+    All shares are public in v1 — there's no listed/unlisted flag.
+
+    Caps: `recent` is clamped server-side to [1, 100].
+    """
+    items = await _run_blocking(presets_db.list_recent, recent, offset)
+    return {"items": items}
 
 
 @app.get(

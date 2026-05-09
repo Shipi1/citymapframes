@@ -39,9 +39,11 @@ USER_AGENT = "CityMapFrames/0.1 (personal map renderer; contact via github)"
 LAYERS_FILE = Path(__file__).parent / "layers.json"
 
 # Fetch scope is always a synthesized square — the slider in the UI just
-# varies the radius. Defaults match the frontend's slider defaults.
+# varies the radius. The slider's exposed minimum stays at 5 km
+# (frontend RADIUS_MIN), but the API allows down to 1 km so the gallery's
+# small reference fetch can succeed.
 DEFAULT_RADIUS_KM = 15
-MIN_RADIUS_KM = 5
+MIN_RADIUS_KM = 1
 MAX_RADIUS_KM = 50
 
 
