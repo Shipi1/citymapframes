@@ -1,6 +1,17 @@
 // Typed wrappers around the FastAPI endpoints in scripts/server.py.
-// Calls go through Vite's dev proxy in development; in production the
-// reverse proxy handles the same path prefix (see TODO.md).
+//
+// URL layout
+// ──────────
+// Each call is fetch(`${API_BASE}${endpoint}`). The endpoint constants
+// here intentionally DO NOT include `/api/` — that prefix lives in
+// API_BASE so the same code works whether the app is mounted at:
+//
+//   dev:   /api/layers          (API_BASE='/api',     Vite dev-proxy)
+//   prod:  /api/map/layers      (API_BASE='/api/map', host nginx rewrites)
+//
+// The default `/api` covers local development (Vite proxies `/api/*` to
+// the uvicorn process — see vite.config.ts). The Docker build passes
+// VITE_API_BASE=/api/map at build-time for production.
 
 import type {
   Anchor,
@@ -12,11 +23,7 @@ import type {
   ShareListResponse,
 } from './types';
 
-// API base path. Empty string means same-origin; in dev that's the
-// Vite dev server, which proxies /api/* to the FastAPI process.
-// In production we'll deploy at e.g. shipisnature.com/api/map/* and
-// override this via a build-time env var.
-const API_BASE = (import.meta.env.VITE_API_BASE ?? '') as string;
+const API_BASE = (import.meta.env.VITE_API_BASE ?? '/api') as string;
 
 class ApiError extends Error {
   status: number;
@@ -46,11 +53,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export function getLayers(): Promise<LayerRegistry> {
-  return request<LayerRegistry>('/api/layers');
+  return request<LayerRegistry>('/layers');
 }
 
 export function postPlace(query: string): Promise<Anchor> {
-  return request<Anchor>('/api/place', {
+  return request<Anchor>('/place', {
     method: 'POST',
     body: JSON.stringify({ query }),
   });
@@ -62,7 +69,7 @@ export function postData(
   radiusKm = 30,
   force = false,
 ): Promise<PlaceData> {
-  return request<PlaceData>('/api/data', {
+  return request<PlaceData>('/data', {
     method: 'POST',
     body: JSON.stringify({ anchor, layers, radius_km: radiusKm, force }),
   });
@@ -72,19 +79,19 @@ export function createShare(
   design: SharedDesign,
   parent_id?: string,
 ): Promise<ShareCreateResponse> {
-  return request<ShareCreateResponse>('/api/share', {
+  return request<ShareCreateResponse>('/share', {
     method: 'POST',
     body: JSON.stringify({ design, parent_id }),
   });
 }
 
 export function getShare(id: string): Promise<ShareGetResponse> {
-  return request<ShareGetResponse>(`/api/share/${encodeURIComponent(id)}`);
+  return request<ShareGetResponse>(`/share/${encodeURIComponent(id)}`);
 }
 
 export function listShares(recent = 20, offset = 0): Promise<ShareListResponse> {
   return request<ShareListResponse>(
-    `/api/share?recent=${recent}&offset=${offset}`,
+    `/share?recent=${recent}&offset=${offset}`,
   );
 }
 

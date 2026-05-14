@@ -1,0 +1,67 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: citymapframes-api
+    container_name: citymapframes-api
+    restart: unless-stopped
+
+    # No `ports:` block — we don't publish to the host. The nginx
+    # container reaches uvicorn over the shared Docker network using the
+    # DNS name `citymapframes-api`. If you ever want to hit the API from
+    # outside Docker (e.g. for ad-hoc curl), uncomment:
+    # ports:
+    #   - "127.0.0.1:8000:8000"
+
+    volumes:
+      # Named volume keeps both SQLite databases across restarts and deploys.
+      # Inspect:  docker compose exec api ls /data
+      # On host:  /var/lib/docker/volumes/<project>_api_data/_data/
+      - api_data:/data
+
+    environment:
+      CITYMAPFRAMES_CACHE_DB: /data/cache.db
+      CITYMAPFRAMES_PRESETS_DB: /data/presets.db
+      CORS_ORIGINS: "https://shipisnature.com"
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    networks:
+      - web
+
+  # ─── Svelte SPA, served by an embedded nginx ──────────────────────────────
+  # Deployed independently of the api — opt in with the `frontend` profile:
+  #   docker compose --profile frontend up -d            (build + start web)
+  #   docker compose --profile frontend build web        (build only)
+  # Plain `docker compose up -d` ignores anything with a profile, so the
+  # api service comes up alone by default.
+  web:
+    profiles: ["frontend"]
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        VITE_BASE_PATH: /map/
+        VITE_API_BASE: /api/map
+    image: citymapframes-web
+    container_name: citymapframes-web
+    restart: unless-stopped
+
+    depends_on:
+      - api
+
+    networks:
+      - web
+volumes:
+  api_data:
+    driver: local
+
+networks:
+  web:
+    external: true

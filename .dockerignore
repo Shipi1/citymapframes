@@ -1,0 +1,26 @@
+# Python build artefacts
+scripts/.venv/
+scripts/__pycache__/
+scripts/*.pyc
+scripts/*.pyo
+
+# SQLite databases (they live on a Docker volume, not in the image)
+scripts/*.db
+scripts/*.db-wal
+scripts/*.db-shm
+
+# Frontend (built separately, served by nginx — not needed in API image)
+web/
+
+# Git
+.git/
+.gitignore
+
+# Editor / CI
+.claude/
+.vscode/
+*.md
+
+# OS
+.DS_Store
+Thumbs.db

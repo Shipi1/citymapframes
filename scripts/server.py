@@ -22,6 +22,7 @@ Dependencies (run once):
 
 import argparse
 import asyncio
+import os
 import sys
 from contextlib import asynccontextmanager
 from dataclasses import asdict
@@ -184,11 +185,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — wide open for localhost dev. Tighten before deploying anywhere
-# that isn't 127.0.0.1.
+# CORS — defaults to wildcard for localhost dev.
+# In production set CORS_ORIGINS to your actual frontend origin, e.g.:
+#   CORS_ORIGINS=https://citymapframes.example.com
+# Multiple origins: comma-separated.
+_cors_origins_raw = os.environ.get("CORS_ORIGINS", "*")
+_cors_origins = (
+    ["*"] if _cors_origins_raw.strip() == "*"
+    else [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )

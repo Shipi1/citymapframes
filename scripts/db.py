@@ -25,6 +25,7 @@ Public API used by geocode.py and fetch.py:
 import argparse
 import gzip
 import json
+import os
 import sqlite3
 import sys
 import time
@@ -34,7 +35,11 @@ from typing import Any, Optional
 
 import orjson
 
-DEFAULT_DB_PATH = Path(__file__).parent / "cache.db"
+# Allow the Docker volume path (or any custom location) to be set via env.
+# Falls back to the script directory so local dev still works unchanged.
+DEFAULT_DB_PATH = Path(
+    os.environ.get("CITYMAPFRAMES_CACHE_DB", str(Path(__file__).parent / "cache.db"))
+)
 PLACE_CACHE_TTL_SEC = 14 * 86400  # 14 days
 
 

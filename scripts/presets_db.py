@@ -18,6 +18,7 @@ Public API:
 
 import gzip
 import hashlib
+import os
 import secrets
 import sqlite3
 import string
@@ -28,7 +29,11 @@ from typing import Any, Optional
 
 import orjson
 
-DEFAULT_DB_PATH = Path(__file__).parent / "presets.db"
+# Allow the Docker volume path (or any custom location) to be set via env.
+# Falls back to the script directory so local dev still works unchanged.
+DEFAULT_DB_PATH = Path(
+    os.environ.get("CITYMAPFRAMES_PRESETS_DB", str(Path(__file__).parent / "presets.db"))
+)
 
 # 8 chars × 62 alphabet ≈ 2 × 10¹⁴ ids. Collision-resistant for any
 # foreseeable scale; the INSERT has retry-on-collision anyway.
