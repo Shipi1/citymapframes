@@ -16,10 +16,12 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
-# Build-time arguments — defaults match the shipisnature.com layout.
-# Override via docker-compose `build.args` if you're deploying elsewhere.
-ARG VITE_BASE_PATH=/map/
-ARG VITE_API_BASE=/api/map
+# Build-time arguments — defaults assume deployment at a dedicated
+# (sub)domain like map.shipisnature.com, where the SPA owns the URL root
+# and the API hangs off /api/. Override via docker-compose `build.args`
+# if you ever want a path-prefix layout instead (e.g. /map/ + /api/map/).
+ARG VITE_BASE_PATH=/
+ARG VITE_API_BASE=/api
 ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 ENV VITE_API_BASE=${VITE_API_BASE}
 

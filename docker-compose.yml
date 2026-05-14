@@ -23,7 +23,10 @@ services:
     environment:
       CITYMAPFRAMES_CACHE_DB: /data/cache.db
       CITYMAPFRAMES_PRESETS_DB: /data/presets.db
-      CORS_ORIGINS: "https://shipisnature.com"
+      # Same-origin in production (frontend + API both live under
+      # map.shipisnature.com), so the browser never sends a cross-origin
+      # request. Wildcard is unnecessary; this single value is enough.
+      CORS_ORIGINS: "https://map.shipisnature.com"
 
     networks:
       - web
@@ -40,8 +43,12 @@ services:
       context: ./web
       dockerfile: Dockerfile
       args:
-        VITE_BASE_PATH: /map/
-        VITE_API_BASE: /api/map
+        # SPA lives at map.shipisnature.com (root of a dedicated subdomain),
+        # but the API lives at shipisnature.com/api/map/* (path prefix on the
+        # main domain). Cross-origin, so VITE_API_BASE must be the absolute
+        # URL — the SPA can't reach the API by a same-origin relative path.
+        VITE_BASE_PATH: /
+        VITE_API_BASE: https://shipisnature.com/api/map
     image: citymapframes-web
     container_name: citymapframes-web
     restart: unless-stopped
