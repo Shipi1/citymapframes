@@ -5,6 +5,7 @@
   import MapCanvas from './components/MapCanvas.svelte';
   import RadiusSlider from './components/RadiusSlider.svelte';
   import ShareButton from './components/ShareButton.svelte';
+  import ExportButton from './components/ExportButton.svelte';
   import Gallery from './components/Gallery.svelte';
   import { getLayers, ApiError } from './lib/api';
   import { app, applyDefaultVisibility } from './lib/state.svelte';
@@ -59,6 +60,7 @@
       title="Browse shared designs"
     >Browse</button>
     <ShareButton />
+    <ExportButton />
   </header>
 
   <main class="body">

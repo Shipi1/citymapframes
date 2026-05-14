@@ -9,10 +9,9 @@
     clampView,
     defaultView,
     makeProjectionContext,
-    compileLayer,
     type RenderResult,
-    type CompiledLayer,
   } from '../lib/render';
+  import { ensureCompiled, getCompiled } from '../lib/compiled-cache';
 
   let canvas: HTMLCanvasElement | undefined = $state(undefined);
 
@@ -23,43 +22,10 @@
 
   // ---------- compiled-path cache ----------
   //
-  // Per-layer Path2D objects, built once when data arrives. Coordinates
-  // are baked against the anchor's cosLat, so the cache is invalidated
-  // whenever data.anchor.bbox changes. Within the same anchor, layers
-  // can be added incrementally as the user toggles them on (LayerSidebar
-  // fetches missing layers and merges them into app.data.layers).
-  let compiled: Map<string, CompiledLayer> = new Map();
-  let compiledKey: string | null = null;
-
-  function bboxKey(bbox: [number, number, number, number]): string {
-    return bbox.join(',');
-  }
-
-  /** Drop the cache (anchor changed) and/or compile any newly-present
-   *  layers. Cheap per-call when nothing has changed. */
-  function ensureCompiled(): number {
-    if (!app.data || !app.registry) return 0;
-    const bbox = app.data.anchor.bbox;
-    const key = bboxKey(bbox);
-    if (key !== compiledKey) {
-      compiled = new Map();
-      compiledKey = key;
-    }
-    const cosLat = Math.cos(((bbox[0] + bbox[2]) / 2) * (Math.PI / 180));
-    const layerById = new Map(app.registry.layers.map((l) => [l.id, l]));
-    let built = 0;
-    for (const [lid, elements] of Object.entries(app.data.layers)) {
-      if (compiled.has(lid)) continue;
-      const layer = layerById.get(lid);
-      if (!layer || !elements || elements.length === 0) continue;
-      const result = compileLayer(layer, elements, cosLat);
-      if (result) {
-        compiled.set(lid, result);
-        built++;
-      }
-    }
-    return built;
-  }
+  // The per-layer Path2D cache is module-level (compiled-cache.ts) so
+  // ExportButton can read the same compiled paths instead of paying the
+  // 1–4 s per-data-load compile cost a second time on every export.
+  // Invalidation is bbox-keyed and handled inside ensureCompiled().
 
   // RAF coalescing: many pointermove / wheel events may fire per frame.
   // We want at most one redraw per frame.
@@ -76,12 +42,12 @@
   function redraw() {
     if (!canvas) return;
     if (!app.data || !app.registry) return;
-    ensureCompiled();
+    ensureCompiled(app.data, app.registry);
     lastResult = renderToCanvas(canvas, {
       data: app.data,
       registry: app.registry,
       enabledLayers: app.enabledLayers,
-      compiled,
+      compiled: getCompiled(),
       overrides: app.layerOverrides,
       view: app.view,
     });

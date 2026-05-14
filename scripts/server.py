@@ -31,6 +31,7 @@ from typing import Optional
 import orjson
 from fastapi import Body, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import ORJSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -184,6 +185,21 @@ app = FastAPI(
     default_response_class=ORJSONResponse,
     lifespan=lifespan,
 )
+
+# Gzip — added BEFORE CORS so it sits on the OUTSIDE of the middleware
+# stack (Starlette processes middleware LIFO on response). The middleware
+# only fires when the client sends Accept-Encoding: gzip (every browser
+# does by default).
+#
+# compresslevel=1 is deliberate: for JSON map payloads, level 1 produces
+# bodies ~85-95% the size of level 9 while costing ~3-5× LESS CPU. We're
+# trading 1-2% of bandwidth for a huge server-side win. A 15 MB Valparaíso
+# response goes from 15 MB → ~2-3 MB on the wire with about 100-200 ms of
+# CPU instead of the 500-1000 ms level 9 would burn.
+#
+# minimum_size=1500 skips small responses (health checks, /api/layers,
+# /api/place) where the gzip header overhead isn't worth it.
+app.add_middleware(GZipMiddleware, minimum_size=1500, compresslevel=1)
 
 # CORS — defaults to wildcard for localhost dev.
 # In production set CORS_ORIGINS to your actual frontend origin, e.g.:

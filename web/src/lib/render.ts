@@ -276,7 +276,7 @@ export function compileLayer(
 
 // ---------- coastline stitching ----------
 
-function stitchCoastlines(ways: OsmElement[]): OsmPoint[][] {
+export function stitchCoastlines(ways: OsmElement[]): OsmPoint[][] {
   const segments = ways
     .filter((w) => w.geometry && w.geometry.length > 1)
     .map((w) => w.geometry!.map((pt) => ({ lat: pt.lat, lon: pt.lon })));
@@ -313,7 +313,7 @@ function stitchCoastlines(ways: OsmElement[]): OsmPoint[][] {
   return chains;
 }
 
-function nearestCornerIndex(
+export function nearestCornerIndex(
   x: number,
   y: number,
   corners: [number, number][],
@@ -441,6 +441,16 @@ export interface RenderOptions {
   /** User view; null/undefined uses defaultView(bbox). */
   view?: View | null;
   fitMode?: FitMode; // default 'cover'
+  /** Override CSS dimensions (defaults to canvas.clientWidth/Height).
+   *  Used by export.ts to render at a fixed aspect / size regardless of
+   *  whether the canvas is actually in the DOM. */
+  cssW?: number;
+  cssH?: number;
+  /** Override device pixel ratio (defaults to window.devicePixelRatio).
+   *  Export sets this to the desired scale-up factor (e.g. 2 or 4) so a
+   *  4× hi-res PNG renders at 4× the bitmap pixels of the on-screen view
+   *  with the SAME framing and proportional line widths. */
+  pixelRatio?: number;
 }
 
 /** Result returned to the caller — useful for hit-testing or for the
@@ -467,9 +477,9 @@ export function renderToCanvas(
     registry.layers.map((l) => [l.id, l]),
   );
 
-  const cssW = canvas.clientWidth || canvas.width || 800;
-  const cssH = canvas.clientHeight || canvas.height || 600;
-  const dpr = window.devicePixelRatio || 1;
+  const cssW = opts.cssW ?? canvas.clientWidth ?? canvas.width ?? 800;
+  const cssH = opts.cssH ?? canvas.clientHeight ?? canvas.height ?? 600;
+  const dpr = opts.pixelRatio ?? window.devicePixelRatio ?? 1;
 
   const bitmapW = Math.max(1, Math.round(cssW * dpr));
   const bitmapH = Math.max(1, Math.round(cssH * dpr));
